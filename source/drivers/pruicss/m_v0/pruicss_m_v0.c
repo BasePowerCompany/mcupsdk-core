@@ -1031,7 +1031,6 @@ static void PRUICSS_intcSetHmr(uint8_t channel,
 int32_t PRUICSS_loadFirmware(PRUICSS_Handle handle, uint8_t pruIcssCore, const uint32_t pruFirmware[], uint32_t byteLength)
 {
     int32_t retVal = SystemP_FAILURE;
-    int32_t status;
     uint32_t baseaddr;
 
     if(handle == NULL || (!(pruIcssCore < PRUICSS_NUM_CORES)))
@@ -1052,8 +1051,8 @@ int32_t PRUICSS_loadFirmware(PRUICSS_Handle handle, uint8_t pruIcssCore, const u
                 baseaddr = PRUICSS_IRAM_PRU(1);
                 break;
         }
-        status = PRUICSS_writeMemory(handle, baseaddr, 0, (const uint32_t *) pruFirmware, byteLength);
-        if((status * 4) != (byteLength))
+        uint32_t writeLen = PRUICSS_writeMemory(handle, baseaddr, 0, (const uint32_t *) pruFirmware, byteLength);
+        if((writeLen * 4) != (byteLength))
         {
             retVal = SystemP_FAILURE;
         }
@@ -1061,13 +1060,13 @@ int32_t PRUICSS_loadFirmware(PRUICSS_Handle handle, uint8_t pruIcssCore, const u
 
     if(retVal == SystemP_SUCCESS)
     {
-        status = PRUICSS_resetCore(handle, pruIcssCore);
+        retVal = PRUICSS_resetCore(handle, pruIcssCore);
     }
 
     if(retVal == SystemP_SUCCESS)
     {
         /* Run firmware */
-        status = PRUICSS_enableCore(handle, pruIcssCore);
+        retVal = PRUICSS_enableCore(handle, pruIcssCore);
     }
 
     return retVal;
