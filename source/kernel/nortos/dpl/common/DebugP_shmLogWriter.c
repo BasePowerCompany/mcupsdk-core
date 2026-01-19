@@ -35,12 +35,18 @@
 #include <kernel/dpl/DebugP.h>
 #include <kernel/dpl/ClockP.h>
 #include <kernel/dpl/TimerP.h>
+#include <string.h>
 #include "printf.h"
 
 static DebugP_ShmLog *gDebugShmLogWriter = NULL;
 static const char *gDebugShmLogWriterSelfCoreName = "unknown";
 
-void DebugP_shmLogWriterPutLine(const uint8_t *buf, uint16_t num_bytes);
+static uint8_t  lineBuf[DebugP_SHM_LOG_WRITER_LINE_BUF_SIZE + sizeof("\r\n")]; // +3 to terminate with \r\n\0
+static uint32_t lineBufIndex = 0;
+
+static void DebugP_shmLogWriterPutLine(const uint8_t *buf, uint16_t num_bytes);
+
+static const char* msgOverflowStr = "<message overflow>\r\n";
 
 void DebugP_shmLogWriterInit(DebugP_ShmLog *shmLog, uint16_t selfCoreId)
 {
@@ -112,45 +118,40 @@ void DebugP_shmLogWriterPutLine(const uint8_t *buf, uint16_t num_bytes)
     }
 }
 
-void DebugP_shmLogWriterPutChar(char character)
-{
-#define DebugP_SHM_LOG_WRITER_LINE_BUF_SIZE (120u)
-static uint8_t lineBuf[DebugP_SHM_LOG_WRITER_LINE_BUF_SIZE+UNSIGNED_INTEGERVAL_TWO]; /* +2 to add \r\n char at end of string in worst case */
-static uint32_t lineBufIndex = 0;
-
-    if(lineBufIndex==0U)
-    {
-        uint64_t curTime = ClockP_getTimeUsec();
-
-        lineBufIndex = snprintf_((char*)lineBuf, DebugP_SHM_LOG_WRITER_LINE_BUF_SIZE, "[%6s] %5d.%06ds : ",
-                            gDebugShmLogWriterSelfCoreName,
-                            (uint32_t)(curTime/TIME_IN_MICRO_SECONDS),
-                            (uint32_t)(curTime%TIME_IN_MICRO_SECONDS)
-                            );
+int DebugP_shmLogWriterPutBuf(const char* buf, uint16_t num_bytes) {
+    // Check byte count post prelude insertion
+    if ((sizeof(lineBuf) - lineBufIndex) < num_bytes) {
+        buf       = msgOverflowStr;
+        num_bytes = strlen(msgOverflowStr);
     }
-    lineBuf[lineBufIndex]=(uint8_t)character;
-	lineBufIndex = lineBufIndex + 1U;
-    if( (character == '\n') ||
-        (lineBufIndex >= (DebugP_SHM_LOG_WRITER_LINE_BUF_SIZE)))
-    {
-        if(lineBufIndex >= (DebugP_SHM_LOG_WRITER_LINE_BUF_SIZE))
-        {
-            /* add EOL */
-            lineBuf[lineBufIndex]=(uint8_t)'\r';
-			lineBufIndex = lineBufIndex + 1U;
-            lineBuf[lineBufIndex]=(uint8_t)'\n';
-			lineBufIndex = lineBufIndex + 1U;
-        }
-        if(lineBuf[lineBufIndex-UNSIGNED_INTEGERVAL_TWO] != (uint8_t)'\r')
-        {
-            /* if line did not terminate with \r followed by \n, then add the \r */
-            lineBuf[lineBufIndex-1U]=(uint8_t)'\r';
-            lineBuf[lineBufIndex]=(uint8_t)'\n';
-			lineBufIndex=lineBufIndex+1U;
-        }
-        /* flush line to shared memory */
+
+    memcpy((char*)lineBuf + lineBufIndex, (char*)buf, num_bytes);
+    lineBufIndex += num_bytes;
+    DebugP_shmLogWriterPutLine(lineBuf, (uint16_t)lineBufIndex);
+    lineBufIndex = 0;
+    return 0;
+}
+
+void DebugP_shmLogWriterPutChar(char character) {
+    lineBuf[lineBufIndex] = (uint8_t)character;
+    lineBufIndex          = lineBufIndex + 1U;
+
+    const int end_of_line = character == '\n' || lineBufIndex >= DebugP_SHM_LOG_WRITER_LINE_BUF_SIZE;
+    if (character == '\n') {
+        lineBufIndex = lineBufIndex - 1; // If caller terminated, backtrack so that wrapping code is less ugly
+    }
+
+    if (end_of_line) {
+        // Termainate
+        lineBuf[lineBufIndex] = (uint8_t)'\r';
+        lineBufIndex++;
+        lineBuf[lineBufIndex] = (uint8_t)'\n';
+        lineBufIndex++;
+        lineBuf[lineBufIndex] = (uint8_t)'\0';
+        lineBufIndex++;
+
+        // Flush the line to shared memory backhaul
         DebugP_shmLogWriterPutLine(lineBuf, (uint16_t)lineBufIndex);
         lineBufIndex = 0;
     }
 }
-

@@ -122,6 +122,10 @@ typedef struct {
 
 } DebugP_ShmLog;
 
+#define DebugP_SHM_LOG_WRITER_LINE_BUF_SIZE (256U)
+
+#define DebugP_SHM_LOG_WRITER_LINE_TOO_LARGE (-1)
+
 /**
  * \name Compile time log and assert enable, disable
  * @{
@@ -307,6 +311,16 @@ void DebugP_shmLogWriterInit(DebugP_ShmLog *shmLog, uint16_t selfCoreId);
  */
 void DebugP_shmLogWriterPutChar(char character);
 
+/**
+ * \brief Write a buffer to shared memory log. The contents of the buffer cannot be longer than
+ * DebugP_SHM_LOG_WRITER_LINE_BUF_SIZE.
+ *
+ * \param buf [in] buffer to write
+ * \param num_bytes [in] number of bytes to write
+ *
+ * \return 0 on success, DebugP_SHM_LOG_WRITER_LINE_TOO_LARGE if the buffer is too large
+ */
+int DebugP_shmLogWriterPutBuf(const char* buf, uint16_t num_bytes);
 
 /**
  * \brief Write a character to UART terminal

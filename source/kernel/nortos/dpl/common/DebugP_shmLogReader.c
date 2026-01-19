@@ -42,13 +42,31 @@ typedef struct {
     uint8_t isCoreShmLogInialized[CSL_CORE_ID_MAX];
     DebugP_ShmLog *shmLog;
     uint8_t numCores;
-    char lineBuf[DEBUG_SHM_LOG_READER_LINE_BUF_SIZE+UNSIGNED_INTEGERVAL_THREE]; /* +3 to add \r\n and null char at end of string in worst case */
+    // To support co-operative log processing, we process a fixed number of lines per iteration
+    uint8_t linesPerIter;
 
 } DebugP_ShmLogReaderCtrl;
 
+// +3 to add \r\n and null char at end of string in worst case
+#define LINE_BUF_SIZE (DEBUG_SHM_LOG_READER_LINE_BUF_SIZE + sizeof("\r\n"))
+static char line_buf[LINE_BUF_SIZE];
+
 DebugP_ShmLogReaderCtrl gDebugShmLogReaderCtrl;
 
-uint32_t DebugP_shmLogReaderGetString(DebugP_ShmLog *shmLog,char *buf, uint32_t buf_size);
+typedef enum {
+    DebugP_LogReadErr_FAIL = UINT32_MAX,
+    // TODO(cmattatall): add DebugP_LogReadErr_BufTooSmall to enable buffering / flushing and truncation.
+} DebugP_LogReadErr;
+
+/**
+ * Reads a string into a buffer from a shared memory log.
+ *
+ * \param shmLog [in] The shared memory log to read from.
+ * \param buf [out] The buffer to read the string into.
+ * \param buf_size [in] The size of the buffer.
+ * \return The length of the string read, or an error code.
+ */
+uint32_t DebugP_shmLogReaderGetString(DebugP_ShmLog* shmLog, char* buf, uint32_t buf_size);
 
 void DebugP_shmLogReaderTaskMain(void *args);
 
@@ -66,6 +84,7 @@ void DebugP_shmLogReaderInit(DebugP_ShmLog *shmLog, uint16_t numCores)
     }
     gDebugShmLogReaderCtrl.shmLog = shmLog;
     gDebugShmLogReaderCtrl.numCores = (uint8_t)numCores;
+    gDebugShmLogReaderCtrl.linesPerIter = 25;
 
     DebugP_shmLogReaderTaskCreate();
 }
@@ -73,126 +92,136 @@ void DebugP_shmLogReaderInit(DebugP_ShmLog *shmLog, uint16_t numCores)
 uint32_t DebugP_shmLogReaderGetString(DebugP_ShmLog *shmLog,
                 char *buf, uint32_t buf_size)
 {
-    int32_t status = SystemP_SUCCESS;
-    uint32_t num_bytes, wr_idx, rd_idx;
+uint32_t num_bytes, wr_idx, rd_idx;
 
     num_bytes = 0;
-    wr_idx = shmLog->wrIndex;
+    wr_idx    = shmLog->wrIndex;
+    rd_idx    = shmLog->rdIndex;
+    if ((wr_idx >= DebugP_SHM_LOG_SIZE) || (rd_idx >= DebugP_SHM_LOG_SIZE)) {
+        return DebugP_LogReadErr_FAIL;
+    }
+
+    // Ringbuf wrap condition
+    if (rd_idx > wr_idx) {
+        num_bytes = (DebugP_SHM_LOG_SIZE - rd_idx) + wr_idx;
+    } else {
+        num_bytes = wr_idx - rd_idx;
+    }
+
+    if (num_bytes == 0U) {
+        return 0;
+    }
+
+    volatile uint8_t* src;
+    uint32_t          break_loop, copy_bytes, idx;
+    uint8_t           cur_char;
+
+    src = shmLog->buffer;
+    idx = 0;
+    for (copy_bytes = 0U; copy_bytes < num_bytes; copy_bytes++) {
+        cur_char = src[rd_idx];
+
+        rd_idx++;
+        if (rd_idx >= DebugP_SHM_LOG_SIZE) {
+            rd_idx = 0;
+        }
+
+        break_loop = 0;
+
+        /* pick only user viewable characters */
+        if (((cur_char >= (uint8_t)' ')
+             && (cur_char <= (uint8_t)'~')) /* all alphabets, numbers, special char's like .,- etc */
+            || (cur_char == (uint8_t)'\r')  /* other valid char's */
+            || (cur_char == (uint8_t)'\n') || (cur_char == (uint8_t)'\t')) {
+            buf[idx] = (char)cur_char;
+            idx++;
+        }
+        if (cur_char == (uint8_t)'\n') {
+            /* add null termination for string and break, we have +3 additional bytes of \r\n null for worst
+             * case */
+            buf[idx]   = (char)0;
+            idx        = idx + 1U;
+            break_loop = 1;
+        } else if (idx >= buf_size) {
+            /* buffer size exceeded, we have +3 additional bytes of \r\n null, add these and break */
+            buf[idx]   = (char)'\r';
+            idx        = idx + 1U;
+            buf[idx]   = (char)'\n';
+            idx        = idx + 1U;
+            buf[idx]   = (char)0;
+            idx        = idx + 1U;
+            break_loop = 1;
+        } else { /*MISRAC */
+        }
+        if (1U == break_loop) {
+            break;
+        } else { /*MISRAC */
+        }
+    }
+    num_bytes = idx;
+
+    shmLog->rdIndex = rd_idx;
+
+    // TODO(cmattatall): WHY IS THIS HERE?
+    // THIS DOES NOT INSPIRE CONFIDENCE IN THE HAL
+
+    /* dummy read to ensure data is written to memory */
     rd_idx = shmLog->rdIndex;
-    if((wr_idx >= DebugP_SHM_LOG_SIZE )|| (rd_idx >= DebugP_SHM_LOG_SIZE))
-    {
-        status = SystemP_FAILURE;
-    }
-    if(status == SystemP_SUCCESS)
-    {
-        if(rd_idx > wr_idx)
-        {
-            num_bytes = (DebugP_SHM_LOG_SIZE - rd_idx) + wr_idx;
-        }
-        else
-        {
-            num_bytes = wr_idx - rd_idx;
-        }
-        if(num_bytes > 0U)
-        {
-            volatile uint8_t *src;
-            uint32_t break_loop, copy_bytes, idx;
-            uint8_t cur_char;
-
-            src = shmLog->buffer;
-            idx = 0;
-            for(copy_bytes = 0U; copy_bytes < num_bytes; copy_bytes ++)
-            {
-                cur_char = src[rd_idx];
-
-                rd_idx++;
-                if(rd_idx >=  DebugP_SHM_LOG_SIZE)
-                {
-                    rd_idx = 0;
-                }
-
-                break_loop = 0;
-
-                /* pick only user viewable characters */
-                if(    ((cur_char >= (uint8_t)' ' )&& (cur_char <= (uint8_t)'~'))/* all alphabets, numbers, special char's like .,- etc */
-                    || (cur_char == (uint8_t)'\r') /* other valid char's */
-                    || (cur_char == (uint8_t)'\n')
-                    || (cur_char == (uint8_t)'\t')
-                    )
-                {
-                    buf[idx] = (char)cur_char;
-                    idx ++;
-                }
-                if(cur_char==(uint8_t)'\n')
-                {
-                    /* add null termination for string and break, we have +3 additional bytes of \r\n null for worst case */
-                    buf[idx] = (char)0;
-					idx = idx + 1U;
-                    break_loop = 1;
-                }
-                else
-                if (idx >= buf_size)
-                {
-                    /* buffer size exceeded, we have +3 additional bytes of \r\n null, add these and break */
-                    buf[idx] = (char)'\r';
-					idx = idx + 1U;
-                    buf[idx] = (char)'\n';
-					idx = idx + 1U;
-                    buf[idx] = (char)0;
-					idx = idx + 1U;
-                    break_loop = 1;
-                }
-				else { /*MISRAC */}
-                if ( 1U == break_loop)
-                {
-                    break;
-                }
-				else { /*MISRAC */}
-            }
-            num_bytes = idx;
-
-            shmLog->rdIndex = rd_idx;
-            /* dummy read to ensure data is written to memory */
-            rd_idx = shmLog->rdIndex;
-            (void) rd_idx;
-        }
-    }
     return num_bytes;
 }
 
 void DebugP_shmLogRead(void) 
 {
-	uint32_t i;
+    const uint8_t maxLinesProcessed = gDebugShmLogReaderCtrl.linesPerIter;
 
-	for(i=0; i<gDebugShmLogReaderCtrl.numCores; i++)
-	{
-		DebugP_ShmLog *shmLog = &gDebugShmLogReaderCtrl.shmLog[i];
+    uint32_t linesProcessed = 0; // Count lines processed and yield at max
+    int      madeProgress   = 0; // Use this to short-circuit when no more logs
 
-		if(gDebugShmLogReaderCtrl.isCoreShmLogInialized[i]==0U)
-		{
-			if(shmLog->isValid == DebugP_SHM_LOG_IS_VALID)
-			{
-				gDebugShmLogReaderCtrl.isCoreShmLogInialized[i] = 1;
-				/* clear isValid flag */
-				shmLog->isValid = 0;
-			}
-		}
-		if((gDebugShmLogReaderCtrl.isCoreShmLogInialized[i]!=0U))
-		{
-			uint32_t strLen;
+    const uint32_t numCores = gDebugShmLogReaderCtrl.numCores;
+    if (numCores == 0U) {
+        return;
+    }
 
-			do
-			{
-				strLen = DebugP_shmLogReaderGetString(shmLog,
-								gDebugShmLogReaderCtrl.lineBuf,
-								DEBUG_SHM_LOG_READER_LINE_BUF_SIZE);
-				if(strLen > 0U)
-				{
-					DebugP_log(gDebugShmLogReaderCtrl.lineBuf);
-				}
-			} while(strLen != 0U);
-		}
-	}
+    // Process logs from each core in round-robin order
+    static uint32_t core_idx = 0U; // Save/resume the core index across calls to achieve round-robin
+    do {
+        madeProgress = 0;
+        for (; core_idx < numCores; core_idx++) {
+            DebugP_ShmLog* shmLog = &gDebugShmLogReaderCtrl.shmLog[core_idx];
+
+            // HAL legacy code - one-time per-core init handshake - mark region as usable.
+            // The writer API sets isValid to indicate it's ready for initialization
+            // by the reader API. Reader API needs to store that it has been configured by the reader and clear.
+            //
+            // TODO(cmattatall): Redesign this mechanism. Goals:
+            //    - do not allow multiple readers configured for a given DebugP_ShmLog
+            //    - writer APIs should be no-ops until reader has been configured
+            if (!gDebugShmLogReaderCtrl.isCoreShmLogInialized[core_idx]) {
+                if (shmLog->isValid == DebugP_SHM_LOG_IS_VALID) {
+                    gDebugShmLogReaderCtrl.isCoreShmLogInialized[core_idx] = 1U;
+                    shmLog->isValid                                        = 0U;
+                }
+            }
+
+            // Try to pull exactly one line from this core.
+            uint32_t ret = DebugP_shmLogReaderGetString(shmLog, line_buf, DEBUG_SHM_LOG_READER_LINE_BUF_SIZE);
+            if (ret == DebugP_LogReadErr_FAIL) {
+                continue;
+            }
+
+            if (ret > 0U) {
+                DebugP_log(line_buf);
+                ++linesProcessed;
+                madeProgress = 1;
+            }
+
+            // yield condition
+            if (linesProcessed >= maxLinesProcessed) {
+                return;
+            }
+        }
+        core_idx = 0U;
+    } while (madeProgress);
 }
 
 void DebugP_shmLogReaderTaskMain(void *args)
@@ -224,15 +253,18 @@ void DebugP_shmLogReaderTaskMain(void *args)
             if(gDebugShmLogReaderCtrl.isCoreShmLogInialized[i]!=0U)
             {
                 uint32_t strLen;
-
+                uint32_t ret;
                 do
                 {
-                    strLen = DebugP_shmLogReaderGetString(shmLog,
-                                    gDebugShmLogReaderCtrl.lineBuf,
-                                    DEBUG_SHM_LOG_READER_LINE_BUF_SIZE);
+                    ret = DebugP_shmLogReaderGetString(shmLog, line_buf, DEBUG_SHM_LOG_READER_LINE_BUF_SIZE);
+                    if (ret == DebugP_LogReadErr_FAIL) {
+                        break;
+                    }
+
+                    strLen = ret;
                     if(strLen > 0U)
                     {
-                        DebugP_log(gDebugShmLogReaderCtrl.lineBuf);
+                        DebugP_log(line_buf);
                     }
                 } while(strLen!=0U);
             }
