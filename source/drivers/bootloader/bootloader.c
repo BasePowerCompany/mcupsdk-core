@@ -870,7 +870,7 @@ int32_t Bootloader_getOTFAConfigFromNoteSegment(Bootloader_Handle handle,
     return status;   
 }
 
-static int32_t Bootloader_verifySegmentAddr(uint32_t addr)
+int32_t Bootloader_verifySegmentAddr(uint32_t addr)
 {
     int32_t status = SystemP_SUCCESS;
 
@@ -940,6 +940,8 @@ int32_t Bootloader_parseAndLoadMultiCoreELF(Bootloader_Handle handle, Bootloader
 
         doAuth = ((Bootloader_socIsAuthRequired() == TRUE) && (config->isAppimageSigned == TRUE));
     }
+    // Disable load-time auth because the TI SDK isn't BELF-aware
+    doAuth = FALSE;
 
     /* 
         If authentication is required, copy and parse the certificate for length and application image length.
@@ -1023,6 +1025,25 @@ int32_t Bootloader_parseAndLoadMultiCoreELF(Bootloader_Handle handle, Bootloader
         if(numSegments > ELF_MAX_SEGMENTS)
         {
             status = SystemP_FAILURE;
+        }
+
+        /**
+         * Check for buffer overflow
+         *
+         * SECURITY(raryanpur) - omitting this check can lead to buffer overflow
+         * and potential arbitrary code execution (ACE) if the ELF file is
+         * maliciously crafted.
+         *
+         * koehlma discovered this vulnerability and reported it to TI through
+         * the TI Product Security Incident Response Team (PSIRT) in Ocotber
+         * 2025. As of 8DEC2025, TI has ack'd receipt of the report but have not
+         * yet confirmed the vulnerability nor released a fix.
+         *
+         * This comment will be updated when TI provides a fix or official
+         * response.
+         *
+         */
+        if (phtSize > ELF_MAX_SEGMENTS * ELF_P_HEADER_MAX_SIZE) {
         }
     }
 

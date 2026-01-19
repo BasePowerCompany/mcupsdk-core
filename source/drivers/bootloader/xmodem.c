@@ -55,9 +55,9 @@ void _outbyte(int c);
 static int check(int crc, const unsigned char *buf, int sz)
 {
 	if (crc) {
-		unsigned short crc = crc16_ccitt(buf, sz);
+		unsigned short _crc = crc16_ccitt(buf, sz);
 		unsigned short tcrc = (buf[sz]<<8)+buf[sz+1];
-		if (crc == tcrc)
+		if (_crc == tcrc)
 			return 1;
 	}
 	else {

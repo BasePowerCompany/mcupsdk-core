@@ -545,6 +545,15 @@ uint32_t Bootloader_getX509CertLen(uint8_t *x509_cert_ptr);
 uint32_t Bootloader_getMsgLen(uint8_t *x509_cert_ptr, uint32_t x509_cert_size);
 /** @} */
 
+/**
+ * @brief Verify the address of a segment to load.
+ *
+ * \param addr Address of the segment to load.
+ *
+ * \return SystemP_SUCCESS on success, else failure
+ */
+int32_t Bootloader_verifySegmentAddr(uint32_t addr);
+
 #ifdef __cplusplus
 }
 #endif
