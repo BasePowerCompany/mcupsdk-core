@@ -814,6 +814,14 @@ void SOC_rcmMemInitMailboxMemory(void);
  */
 void SOC_rcmMemInitL2Memory(void);
 /**
+ *  \brief Start memory initialization for L2 Bank2
+ */
+void SOC_rcmMemInitL2MemoryBank2(void);
+/**
+ *  \brief Start memory initialization for L2 Bank3
+ */
+void SOC_rcmMemInitL2MemoryBank3(void);
+/**
  *  \brief Reset R5SS0 Core
  */
 void SOC_rcmR5SS0PowerOnReset(void);
