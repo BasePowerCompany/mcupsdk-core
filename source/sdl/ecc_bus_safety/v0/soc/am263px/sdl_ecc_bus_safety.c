@@ -75,14 +75,14 @@
 *
 * \param   baseAddrOffst pointer to hold the base and offset address
 */
-static void SDL_ECC_BUS_SAFETY_MSS_busSftyFitypeSet(SDL_ECC_BUS_SAFETY_busSftyFiType fiType, SDL_ECC_BUS_SAFETY_busSftyFiRedType redType,
+void SDL_ECC_BUS_SAFETY_MSS_busSftyFitypeSet(SDL_ECC_BUS_SAFETY_busSftyFiType fiType, SDL_ECC_BUS_SAFETY_busSftyFiRedType redType,
                                                SDL_ECC_BUS_SAFETY_Base_Addr_Offset_S *baseAddrOffst);
 
 /**
 *  \brief   This API is used enble the MSS ECC bus Safety
 *
 */
-static void SDL_ECC_BUS_SAFETY_MSS_SAFETY_CTRL_enable (void);
+void SDL_ECC_BUS_SAFETY_MSS_SAFETY_CTRL_enable (void);
 
 /**
 *  \brief   This API is used to get the offset address of MSS node
@@ -91,7 +91,7 @@ static void SDL_ECC_BUS_SAFETY_MSS_SAFETY_CTRL_enable (void);
 *
 * \param   baseAddrOffst pointer to hold the base and offset address
 */
-static int32_t SDL_ECC_BUS_SAFETY_MSS_getRegOffset(uint32_t busSftyNode , SDL_ECC_BUS_SAFETY_Base_Addr_Offset_S *baseAddrOffst);
+int32_t SDL_ECC_BUS_SAFETY_MSS_getRegOffset(uint32_t busSftyNode , SDL_ECC_BUS_SAFETY_Base_Addr_Offset_S *baseAddrOffst);
 
 /* ========================================================================== */
 
@@ -106,7 +106,7 @@ static int32_t SDL_ECC_BUS_SAFETY_MSS_getRegOffset(uint32_t busSftyNode , SDL_EC
 * API to enable the bus Safety on MSS
 * Helper function
 *********************************************************************************************************/
-static void SDL_ECC_BUS_SAFETY_MSS_SAFETY_CTRL_enable (void)
+void SDL_ECC_BUS_SAFETY_MSS_SAFETY_CTRL_enable (void)
 {
     /* enable the bus safety for MSS */
 	HW_WR_FIELD32((SDL_ECC_BUS_SAFETY_MSS_BUS_CFG+SDL_MSS_CTRL_MSS_BUS_SAFETY_CTRL),\
@@ -328,7 +328,7 @@ int32_t SDL_ECC_BUS_SAFETY_MSS_getRedErrorStatus(uint32_t busSftyNode , uint32_t
 }
 
 /* Helper function to induce red error */
-static void SDL_ECC_BUS_SAFETY_MSS_busSftyFitypeSet(SDL_ECC_BUS_SAFETY_busSftyFiType fiType, SDL_ECC_BUS_SAFETY_busSftyFiRedType redType,
+void SDL_ECC_BUS_SAFETY_MSS_busSftyFitypeSet(SDL_ECC_BUS_SAFETY_busSftyFiType fiType, SDL_ECC_BUS_SAFETY_busSftyFiRedType redType,
                                                 SDL_ECC_BUS_SAFETY_Base_Addr_Offset_S *baseAddrOffst)
 {
     switch(fiType)
@@ -570,7 +570,7 @@ int32_t SDL_ECC_BUS_SAFETY_MSS_redExecute(uint32_t busSftyNode,\
 * Helper API to get the offset address of MSS node
 *********************************************************************************************************/
 
-static int32_t SDL_ECC_BUS_SAFETY_MSS_getRegOffset(uint32_t busSftyNode , SDL_ECC_BUS_SAFETY_Base_Addr_Offset_S *baseAddrOffst)
+int32_t SDL_ECC_BUS_SAFETY_MSS_getRegOffset(uint32_t busSftyNode , SDL_ECC_BUS_SAFETY_Base_Addr_Offset_S *baseAddrOffst)
 {
     int32_t retval = SDL_PASS;
     baseAddrOffst->baseAddr = SDL_ECC_BUS_SAFETY_MSS_BUS_CFG;
