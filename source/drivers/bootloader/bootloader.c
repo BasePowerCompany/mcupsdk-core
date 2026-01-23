@@ -1044,6 +1044,7 @@ int32_t Bootloader_parseAndLoadMultiCoreELF(Bootloader_Handle handle, Bootloader
          *
          */
         if (phtSize > ELF_MAX_SEGMENTS * ELF_P_HEADER_MAX_SIZE) {
+            status = SystemP_FAILURE;
         }
     }
 
